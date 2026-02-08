@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# Developed by Youssef BOUDDIRA <youssefbouddira@gmail.com>
+# Checkmk Plugin – Cisco Serial Number Inventory
+
+from cmk.base.check_api import LegacyCheckDefinition
+from cmk.base.config import check_info
+from cmk.agent_based.v2 import SNMPTree, StringTable, contains
+
+# -------- INVENTORY --------
+def inventory_check_cisco_serial_number(info: StringTable):
+    """Créer un service par module/composant avec un numéro de série"""
+    services = []
+    for line in info:
+        if len(line) >= 2 and line[1]:
+            item = line[0].replace(" ", "-") if line[0] else "unknown"
+            services.append((item, {}))
+    return services
+
+# -------- CHECK --------
+def check_cisco_serial_number(item, _params, info: StringTable):
+    """Retourne le numéro de série correspondant au module"""
+    for line in info:
+        if len(line) >= 2:
+            comp = line[0].replace(" ", "-") if line[0] else "unknown"
+            serial = line[1].strip() if line[1] else "<vide>"
+            if comp == item:
+                return 0, f"Serial-Number: {serial}"
+    return 3, "Aucun numéro de série trouvé pour cet item"
+
+# -------- PARSE --------
+def parse_cisco_serial_number(string_table: StringTable) -> StringTable:
+    """On garde le tableau brut tel quel"""
+    return string_table
+
+# -------- REGISTER --------
+check_info["check_cisco_serial_number"] = LegacyCheckDefinition(
+    parse_function=parse_cisco_serial_number,
+    detect=contains(".1.3.6.1.2.1.1.2.0", ".1.3.6.1.4.1.9.1."),  # Tous Cisco
+    fetch=SNMPTree(
+        base=".1.3.6.1.2.1.47.1.1.1.1",
+        oids=[
+            "2",   # Nom du module/composant
+            "11",  # Serial number
+        ],
+    ),
+    service_name="HWR_CSC_SERIAL_NUMBER_%s_Info",
+    discovery_function=inventory_check_cisco_serial_number,
+    check_function=check_cisco_serial_number,
+    check_ruleset_name="cisco_serial_number",
+)
